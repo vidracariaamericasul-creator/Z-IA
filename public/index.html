@@ -4,85 +4,75 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Z - Sua IA pessoal</title>
 <style>
-*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#0f172a;color:white;height:100vh}
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#0f172a;color:white;height:100vh;overflow:hidden}
 .app{height:100vh;display:flex;flex-direction:column}
 header{padding:18px;text-align:center;border-bottom:1px solid #334155;font-size:24px;font-weight:bold}
 #chat{flex:1;overflow-y:auto;padding:20px}
 .message{margin-bottom:14px;padding:12px 15px;border-radius:14px;max-width:85%;white-space:pre-wrap;line-height:1.5}
 .user{margin-left:auto;background:#2563eb}.assistant{margin-right:auto;background:#1e293b}
-.input-area{position:relative;display:flex;gap:10px;padding:15px;border-top:1px solid #334155;align-items:center}
-input{flex:1;padding:16px 20px;border:none;border-radius:25px;font-size:16px;outline:none;background:white;color:black}
-.btn{width:52px;height:52px;min-width:52px;border:none;border-radius:50%;font-size:22px;display:flex;align-items:center;justify-content:center;cursor:pointer}
-#send{background:#25D366;color:white}
-#mic{background:#2563eb;color:white}
-#mic.recording{background:#ef4444;animation:pulse.8s infinite}
-@keyframes pulse{0%{transform:scale(1)}50%{transform:scale(1.15)}100%{transform:scale(1)}}
-#status{text-align:center;font-size:13px;color:#94a3b8;height:18px}
+.input-area{position:relative;display:flex;gap:10px;padding:15px;border-top:1px solid #334155;align-items:center;background:#0f172a}
+input{flex:1;padding:16px 20px;border:none;border-radius:25px;font-size:16px;outline:none}
+.btn{width:54px;height:54px;min-width:54px;border:none;border-radius:50%;font-size:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;touch-action:none}
+#send{background:#25D366;color:white;display:none}
+#mic{background:#2563eb;color:white;transition:transform.1s}
+#mic.hold{background:#ef4444;transform:scale(1.2)}
+#recBox{display:none;position:absolute;left:15px;right:80px;bottom:15px;background:#1e293b;border-radius:28px;padding:14px 20px;align-items:center;gap:12px;border:1px solid #334155}
+#recBox.show{display:flex}
+.dot{width:12px;height:12px;background:#ef4444;border-radius:50%;animation:blink 1s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+#timer{font-weight:bold}
+#slideText{margin-left:auto;font-size:13px;color:#94a3b8}
+#lockArea{position:absolute;right:18px;bottom:85px;background:#1e293b;border:1px solid #334155;border-radius:14px;padding:12px;width:120px;text-align:center;display:none;flex-direction:column;align-items:center;gap:6px}
+#lockArea.show{display:flex}
+#lockIcon{font-size:22px;transition:transform.1s}
+#cancelArea{position:absolute;left:50%;transform:translateX(-50%);bottom:85px;background:#7f1d1d;border-radius:14px;padding:10px 16px;display:none}
+#cancelArea.show{display:flex}
+#cancelArea.delete{background:#991b1b}
 </style>
 </head>
 <body>
 <div class="app">
 <header>Z</header>
 <div id="chat"></div>
-<div id="status"></div>
-<div class="input-area">
-<input id="message" type="text" placeholder="Digite sua mensagem..." autocomplete="off">
-<button id="mic" class="btn">🎤</button>
-<button id="send" class="btn" style="display:none">➤</button>
+<div class="input-area" id="inputArea">
+  <div id="recBox"><div class="dot"></div><span id="timer">0:00</span><span id="slideText">◀ deslize para cancelar</span></div>
+  <div id="lockArea"><div id="lockIcon">🔒</div><span style="font-size:12px">Deslize pra cima<br>para travar</span></div>
+  <div id="cancelArea">🗑️ Solte para cancelar</div>
+  <input id="message" type="text" placeholder="Digite sua mensagem..." autocomplete="off">
+  <button id="mic" class="btn">🎤</button>
+  <button id="send" class="btn">➤</button>
 </div>
 </div>
 <script>
-const chat=document.getElementById("chat"), input=document.getElementById("message"), send=document.getElementById("send"), mic=document.getElementById("mic"), statusEl=document.getElementById("status");
-const history=[];
-function addMessage(t,r){const d=document.createElement("div");d.className="message "+r;d.textContent=t;chat.appendChild(d);chat.scrollTop=chat.scrollHeight}
+const chat=document.getElementById("chat"),input=document.getElementById("message"),send=document.getElementById("send"),mic=document.getElementById("mic");
+const recBox=document.getElementById("recBox"),timerEl=document.getElementById("timer"),lockArea=document.getElementById("lockArea"),cancelArea=document.getElementById("cancelArea"),lockIcon=document.getElementById("lockIcon"),slideText=document.getElementById("slideText");
+const history=[];function addMsg(t,r){const d=document.createElement("div");d.className="message "+r;d.textContent=t;chat.appendChild(d);chat.scrollTop=chat.scrollHeight}
+function updateBtns(){if(input.value.trim()){send.style.display="flex";mic.style.display="none"}else{send.style.display="none";mic.style.display="flex"}}
+input.addEventListener("input",updateBtns);
+async function sendMessage(){const m=input.value.trim();if(!m)return;addMsg(m,"user");history.push({role:"user",content:m});input.value="";updateBtns();send.disabled=true;try{const r=await fetch("/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:m,history})});const d=await r.json();if(!r.ok)throw new Error(d.detail);addMsg(d.reply,"assistant");history.push({role:"assistant",content:d.reply})}catch(e){addMsg("Erro: "+e.message,"assistant")}send.disabled=false}
+send.addEventListener("click",sendMessage);input.addEventListener("keydown",e=>{if(e.key==="Enter")sendMessage()});
 
-function updateButtons(){
- if(input.value.trim().length>0){
-   send.style.display="flex"; mic.style.display="none";
- }else{
-   send.style.display="none"; mic.style.display="flex";
- }
-}
-input.addEventListener("input",updateButtons);
-
-async function sendMessage(){
- const m=input.value.trim(); if(!m) return;
- addMessage(m,"user"); history.push({role:"user",content:m});
- input.value=""; updateButtons(); send.disabled=true;
- try{
-  const r=await fetch("/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:m,history})});
-  const d=await r.json(); if(!r.ok)throw new Error(d.detail||"Erro");
-  addMessage(d.reply,"assistant"); history.push({role:"assistant",content:d.reply});
- }catch(e){addMessage("Erro: "+e.message,"assistant")}
- send.disabled=false; input.focus();
-}
-send.addEventListener("click",sendMessage);
-input.addEventListener("keydown",e=>{if(e.key==="Enter")sendMessage()});
-
-// MICROFONE CORRIGIDO PARA iPHONE
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-let rec=null, gravando=false, timer=null, seg=0;
-function setStatus(t){statusEl.textContent=t}
-function startTimer(){seg=0;setStatus("● Gravando 0:00 - solte para enviar");timer=setInterval(()=>{seg++;setStatus(`● Gravando ${Math.floor(seg/60)}:${String(seg%60).padStart(2,'0')} - solte para enviar`)},1000)}
-function stopTimer(){clearInterval(timer);setStatus("")}
+let rec=null,isHold=false,isLocked=false,startY=0,startX=0,timerInt=null,sec=0,transcript="";
 
-if(SR){
- rec=new SR(); rec.lang="pt-BR"; rec.interimResults=true; rec.continuous=true;
- rec.onstart=()=>{gravando=true;mic.textContent="■";mic.classList.add("recording");startTimer()};
- rec.onend=()=>{gravando=false;mic.textContent="🎤";mic.classList.remove("recording");stopTimer(); if(input.value.trim()){updateButtons(); sendMessage()}};
- rec.onresult=e=>{let txt="";for(let i=0;i<e.results.length;i++)txt+=e.results[i][0].transcript; input.value=txt; updateButtons()};
- rec.onerror=()=>{gravando=false;mic.textContent="🎤";mic.classList.remove("recording");stopTimer();setStatus("Não consegui ouvir, tente de novo")};
+function startTimer(){sec=0;timerEl.textContent="0:00";timerInt=setInterval(()=>{sec++;timerEl.textContent=`${Math.floor(sec/60)}:${String(sec%60).padStart(2,"0")}`},1000)}
+function stopTimer(){clearInterval(timerInt)}
+function resetUI(){isHold=false;isLocked=false;mic.classList.remove("hold");mic.textContent="🎤";recBox.classList.remove("show");lockArea.classList.remove("show");cancelArea.classList.remove("show");input.style.opacity="1";stopTimer();slideText.textContent="◀ deslize para cancelar";recBox.style.background="#1e293b"}
 
- let pressionado=false;
- mic.addEventListener("touchstart",e=>{e.preventDefault(); if(!gravando){pressionado=true; rec.start()}});
- mic.addEventListener("touchend",e=>{e.preventDefault(); if(gravando){rec.stop()}});
- mic.addEventListener("mousedown",e=>{if(!gravando){pressionado=true; rec.start()}});
- mic.addEventListener("mouseup",e=>{if(gravando){rec.stop()}});
-}else{
- mic.addEventListener("click",()=>{alert("Seu iPhone está no modo de economia? O microfone do site precisa de Safari atualizado. Por enquanto use o microfone do teclado ⌨️🎤")});
+function startRec(y,x){
+ if(!SR){alert("Use Chrome ou Safari atualizado");return}
+ rec=new SR();rec.lang="pt-BR";rec.continuous=true;rec.interimResults=true;
+ rec.onresult=e=>{let t="";for(let i=0;i<e.results.length;i++)t+=e.results[i][0].transcript;transcript=t;input.value=t;if(isLocked)updateBtns()};
+ rec.onend=()=>{if(isHold &&!isLocked){finishRec(false)}};
+ rec.start();isHold=true;isLocked=false;startY=y;startX=x;transcript="";mic.classList.add("hold");mic.textContent="🎤";recBox.classList.add("show");lockArea.classList.add("show");input.style.opacity="0.3";startTimer();
 }
-addMessage("Olá! Eu sou a Z. Digite ou segure o 🎤 para falar.","assistant");
-updateButtons();
-</script>
-</body>
-</html>
+function finishRec(cancel){
+ try{rec&&rec.stop()}catch{}
+ const finalText=transcript.trim();
+ resetUI();
+ if(cancel){input.value="";transcript="";updateBtns();return}
+ if(finalText){input.value=finalText;updateBtns();sendMessage()}else{input.value="";updateBtns()}
+}
+
+mic.addEventListener("pointerdown",e=>{
+ e.preventDefault();mic.setPointerCapture

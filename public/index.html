@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Z - Sua IA pessoal</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #0f172a;
+            color: white;
+            height: 100vh;
+        }
+
+        .app {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            padding: 18px;
+            text-align: center;
+            border-bottom: 1px solid #334155;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        #chat {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .message {
+            margin-bottom: 14px;
+            padding: 12px 15px;
+            border-radius: 14px;
+            max-width: 85%;
+            white-space: pre-wrap;
+            line-height: 1.5;
+        }
+
+        .user {
+            margin-left: auto;
+            background: #2563eb;
+        }
+
+        .assistant {
+            margin-right: auto;
+            background: #1e293b;
+        }
+
+        .input-area {
+            display: flex;
+            gap: 10px;
+            padding: 15px;
+            border-top: 1px solid #334155;
+        }
+
+        input {
+            flex: 1;
+            padding: 14px;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            outline: none;
+        }
+
+        button {
+            padding: 14px 20px;
+            border: none;
+            border-radius: 12px;
+            background: #2563eb;
+            color: white;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app">
+        <header>Z</header>
+
+        <div id="chat"></div>
+
+        <div class="input-area">
+            <input
+                id="message"
+                type="text"
+                placeholder="Digite sua mensagem..."
+                autocomplete="off"
+            >
+            <button id="send">Enviar</button>
+        </div>
+    </div>
+
+    <script>
+        const chat = document.getElementById("chat");
+        const input = document.getElementById("message");
+        const send = document.getElementById("send");
+
+        const history = [];
+
+        function addMessage(text, role) {
+            const div = document.createElement("div");
+            div.className = "message " + role;
+            div.textContent = text;
+            chat.appendChild(div);
+            chat.scrollTop = chat.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const message = input.value.trim();
+
+            if (!message) return;
+
+            addMessage(message, "user");
+            history.push({
+                role: "user",
+                content: message
+            });
+
+            input.value = "";
+            send.disabled = true;
+
+            try {
+                const response = await fetch("/chat", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        history: history
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.detail || "Erro ao conversar com a Z.");
+                }
+
+                addMessage(data.reply, "assistant");
+
+                history.push({
+                    role: "assistant",
+                    content: data.reply
+                });
+
+            } catch (error) {
+                addMessage(
+                    "Erro: " + error.message,
+                    "assistant"
+                );
+            }
+
+            send.disabled = false;
+            input.focus();
+        }
+
+        send.addEventListener("click", sendMessage);
+
+        input.addEventListener("keydown", function(event) {
+            if (event.key === "Enter") {
+                sendMessage();
+            }
+        });
+
+        addMessage(
+            "Olá! Eu sou a Z. Como posso ajudar?",
+            "assistant"
+        );
+    </script>
+</body>
+</html>

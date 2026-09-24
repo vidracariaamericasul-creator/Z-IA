@@ -41,17 +41,25 @@ def manifest():
 
 @app.post("/chat")
 def chat(req: ChatRequest):
-    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    api_key = os.environ.get("OPENAI_API_KEY")
+
+    if not api_key:
+        return {
+            "reply": "A chave da OpenAI não está configurada na Vercel."
+        }
+
+    client = OpenAI(api_key=api_key)
 
     messages = [
         {"role": "system", "content": SYSTEM}
     ]
 
     for item in req.history:
-        messages.append({
-            "role": item["role"],
-            "content": item["content"]
-        })
+        if item.get("role") in ["user", "assistant"]:
+            messages.append({
+                "role": item["role"],
+                "content": item.get("content", "")
+            })
 
     messages.append({
         "role": "user",
@@ -59,7 +67,7 @@ def chat(req: ChatRequest):
     })
 
     response = client.chat.completions.create(
-        model="gpt-5.6",
+        model="gpt-5",
         messages=messages
     )
 

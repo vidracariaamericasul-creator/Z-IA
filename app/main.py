@@ -10,12 +10,10 @@ app = FastAPI(title="Z")
 
 PUBLIC = Path(__file__).resolve().parent.parent / "public"
 
-
 class ChatRequest(BaseModel):
     message: str
     history: list[dict] = []
     use_web: bool = True
-
 
 SYSTEM = """Você é Z, uma IA pessoal criada para ajudar o usuário de forma prática, clara e competente.
 Responda principalmente em português do Brasil, a menos que o usuário peça outro idioma.
@@ -25,11 +23,9 @@ Ajude com trabalho, estudos, construção, vidros, viagens, tecnologia, organiza
 Se o pedido envolver uma ação externa (enviar mensagem, comprar, movimentar dinheiro, apagar algo etc.), peça confirmação antes de executar qualquer ação.
 """
 
-
 @app.get("/")
 def home():
     return FileResponse(PUBLIC / "index.html")
-
 
 @app.get("/manifest.json")
 def manifest():
@@ -38,10 +34,9 @@ def manifest():
         media_type="application/manifest+json"
     )
 
-
 @app.post("/chat")
 def chat(req: ChatRequest):
-    api_key = os.environ.get("OPENAI_API_KEY")
+    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
 
     if not api_key:
         return {
@@ -67,7 +62,7 @@ def chat(req: ChatRequest):
     })
 
     response = client.chat.completions.create(
-        model="gpt-5",
+        model="gpt-4o-mini",
         messages=messages
     )
 

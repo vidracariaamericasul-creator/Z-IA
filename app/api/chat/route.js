@@ -19,7 +19,7 @@ export async function POST(req){
     body: JSON.stringify({
       model: "llama-3.3-70b-versatile",
       messages:[
-        {role:"system", content:`Você é a Z 🐻 pt-BR curta. Dado: ${extra}`},
+        {role:"system", content:`Você é a Z assistente pt-BR curta e direta. Dado: ${extra}`},
         {role:"user", content: pergunta}
       ]
     })

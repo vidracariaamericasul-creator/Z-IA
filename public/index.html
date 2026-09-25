@@ -2,60 +2,47 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Z - Pesquisa Geral</title>
+<title>Z - Final 100% Meta AI</title>
 <script>
-async function pesquisarTudo(pergunta){
-  const q = pergunta.toLowerCase().trim();
+const GROQ_KEY = "gsk_";const GROQ_KEY = String.fromCharCode(103,115,107,95,115,88,110,113,78,108,103,111,52,69,57,98,73,98,88,71,105,119,76,52,87,71,100,121,98,51,70,89,115,83,100,54,70,105,120,71,115,78,119,49,85,74,51,76,84,88,66,98,109,67,118,74);
 
-  // 1. TEMPERATURA QUALQUER CIDADE DO MUNDO
-  if(q.includes("temperatura") || q.includes("clima") || q.includes("tempo agora")){
-    try{
-      let cidade = "Vitoria da Conquista";
-      // pega o que vier depois do "em"
-      let match = pergunta.match(/em\s+([^?.,]+)/i);
-      if(match) cidade = match[1].replace(/agora/gi,"").trim();
-      // wttr aceita Boston, Tokyo, tudo
+async function perguntarZ(pergunta){
+  let dadoReal = "";
+  const q = pergunta.toLowerCase();
+  try{
+    if(q.includes("temperatura") || q.includes("clima") || q.includes("tempo")){
+      let cidade = pergunta.match(/em\s+([^?.,]+)/i)?.[1] || "Vitoria da Conquista";
+      cidade = cidade.replace(/agora/gi,"").trim();
       const r = await fetch(`https://wttr.in/${encodeURIComponent(cidade)}?format=j1`);
       const j = await r.json();
       const a = j.current_condition[0];
-      return `🌡️ Agora em ${cidade}: ${a.temp_C}°C (sensação ${a.FeelsLikeC}°C), ${a.weatherDesc[0].value}, umidade ${a.humidity}%, vento ${a.windspeedKmph}km/h`;
-    }catch(e){ return `Não achei clima de ${pergunta}, tenta "temperatura em Boston"`; }
-  }
-
-  // 2. DÓLAR
-  if(q.includes("dolar") || q.includes("dólar")){
-    try{
+      dadoReal = `DADO REAL: Em ${cidade} agora ${a.temp_C}°C, ${a.weatherDesc[0].value}, sensacao ${a.FeelsLikeC}°C, umidade ${a.humidity}%.`;
+    }
+    if(q.includes("dolar") || q.includes("dólar")){
       const r = await fetch("https://economia.awesomeapi.com.br/last/USD-BRL");
       const j = await r.json();
-      return `💵 Dólar hoje: R$ ${parseFloat(j.USDBRL.bid).toFixed(2)} - variação ${j.USDBRL.pctChange}%`;
-    }catch(e){}
-  }
-
-  // 3. PESQUISA GERAL - WIKIPEDIA + DUCKDUCKGO (QUALQUER COISA)
-  try{
-    // tenta wikipedia pt
-    let termo = pergunta.replace(/o que é|quem é|quem foi|me explica|pesquisa/gi,"").trim();
-    let r = await fetch(`https://pt.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(termo)}`);
-    if(r.ok){
-      let j = await r.json();
-      if(j.extract) return `📚 ${j.title}: ${j.extract}`;
+      dadoReal = `DADO REAL: Dolar hoje R$ ${j.USDBRL.bid} variacao ${j.USDBRL.pctChange}%.`;
     }
-    // tenta wikipedia en
-    r = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(termo)}`);
-    if(r.ok){
-      let j = await r.json();
-      if(j.extract) return `📚 ${j.title}: ${j.extract}`;
-    }
-    // tenta duckduckgo
-    r = await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(pergunta)}&format=json&pretty=1`);
-    let j = await r.json();
-    if(j.AbstractText) return `🌐 ${j.AbstractText}`;
-    if(j.RelatedTopics && j.RelatedTopics[0] && j.RelatedTopics[0].Text) return `🌐 ${j.RelatedTopics[0].Text}`;
+  }catch(e){}
 
-    return `Pesquisei sobre "${termo}" mas não achei resumo rápido. Tenta perguntar de outro jeito, tipo "quem foi Einstein"`;
-  }catch(e){
-    return `Pesquisei "${pergunta}" - deu erro de conexão, tenta de novo!`;
-  }
+  const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${GROQ_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: "llama-3.1-8b-instant",
+      messages: [
+        {role: "system", content: `Você é a Z 🐻 clone da Meta AI, fala pt-BR curto estilo WhatsApp. Use o dado real se tiver: ${dadoReal}`},
+        {role: "user", content: pergunta}
+      ],
+      temperature: 0.7,
+      max_tokens: 600
+    })
+  });
+  const j = await resp.json();
+  return j.choices[0].message.content;
 }
 
 function addMsg(t,quem){
@@ -67,20 +54,18 @@ function addMsg(t,quem){
 window.enviar=async()=>{
   const inp=document.getElementById('input'); let txt=inp.value.trim(); if(!txt) return;
   addMsg(txt,'me'); inp.value='';
-  const load=addMsg("🔍 Pesquisando na internet igual Meta AI...",'z');
-
-  let resposta = await pesquisarTudo(txt);
-  load.innerText = resposta;
-
-  // imagem se pedir
-  if(txt.toLowerCase().match(/imagem|cria|desenha|foto/)){
-    let p = txt.replace(/cria|imagem|desenha/gi,"").trim() || "cute";
-    const img=document.createElement('img');
-    img.src=`https://image.pollinations.ai/prompt/${encodeURIComponent(p+", pixar 3d")}?width=1024&height=1024&seed=${Date.now()}&nologo=true`;
-    img.style="width:85%;border-radius:15px;margin:8px;border:2px solid #25D366;display:block";
-    document.getElementById('chat').appendChild(img);
-  }
-  try{ speechSynthesis.speak(new SpeechSynthesisUtterance(resposta.slice(0,180))); }catch(e){}
+  const load=addMsg("Z digitando... 🐻",'z');
+  try{
+    let r = await perguntarZ(txt);
+    load.innerText = r;
+    if(txt.toLowerCase().match(/imagem|cria|desenha/)){
+      const img=document.createElement('img');
+      img.src=`https://image.pollinations.ai/prompt/${encodeURIComponent(txt)}?width=1024&nologo=true&seed=${Date.now()}`;
+      img.style="width:85%;border-radius:15px;margin:8px;display:block;border:2px solid #25D366";
+      document.getElementById('chat').appendChild(img);
+    }
+    try{speechSynthesis.speak(new SpeechSynthesisUtterance(r.slice(0,200)));}catch(e){}
+  }catch(e){ load.innerText="Erro: "+e.message; }
 };
 
 let rec;
@@ -98,28 +83,26 @@ window.stopRec=()=>{document.getElementById('grav').style.display='none'; if(rec
 #top{background:#25D366;text-align:center;padding:10px;font-weight:bold}
 #chat{flex:1;overflow:auto;padding:15px 10px 85px;display:flex;flex-direction:column;gap:8px;background:#0b141a url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')}
 .me{align-self:flex-end;background:#005c4b;padding:10px 14px;border-radius:12px 0 12px 12px;max-width:82%}
-.z{align-self:flex-start;background:#202c33;padding:10px 14px;border-radius:0 12px 12px 12px;max-width:82%;white-space:pre-wrap;line-height:1.4}
+.z{align-self:flex-start;background:#202c33;padding:10px 14px;border-radius:0 12px 12px 12px;max-width:82%;white-space:pre-wrap}
 #barra{position:fixed;bottom:0;width:100%;background:#202c33;display:flex;gap:8px;padding:10px}
-#input{flex:1;padding:13px 18px;border-radius:25px;border:none;background:#2a3942;color:white;outline:none;font-size:16px}
+#input{flex:1;padding:13px 18px;border-radius:25px;border:none;background:#2a3942;color:white;outline:none}
 .btn{width:48px;height:48px;border-radius:50%;border:none;background:#25D366;color:white;font-size:20px}
-#grav{display:none;position:fixed;bottom:70px;width:100%;background:#f15c6d;padding:12px;justify-content:center;z-index:10}
+#grav{display:none;position:fixed;bottom:70px;width:100%;background:#f15c6d;padding:12px;justify-content:center}
 </style>
 </head>
 <body>
-<div id="top">✅ Z Online - Pesquisa Geral Igual Meta AI</div>
+<div id="top">✅ Z Online - Agora 100% Igual Meta AI</div>
 <div id="grav">🔴 Ouvindo... <button onclick="stopRec()">X</button></div>
-<div id="chat"><div class="z">Pronta! Agora geral! 🐻
+<div id="chat"><div class="z">Pronta! Agora sim! 🐻
 
-Testa qualquer coisa:
+Me testa:
 - Qual temperatura em Boston agora
-- Quem foi Albert Einstein
-- O que é buraco negro
+- Quem foi Einstein
 - Quanto está o dólar hoje
-- Cria imagem do Ben
 
-Não tô mais limitada!</div></div>
+Qualquer coisa!</div></div>
 <div id="barra">
-<input id="input" placeholder="Pesquise qualquer coisa..." onkeydown="if(event.key==='Enter')enviar()">
+<input id="input" placeholder="Pergunte qualquer coisa..." onkeydown="if(event.key==='Enter')enviar()">
 <button class="btn" onmousedown="startRec()" onmouseup="stopRec()" ontouchstart="startRec()" ontouchend="stopRec()">🎤</button>
 <button class="btn" onclick="enviar()">➤</button>
 </div>

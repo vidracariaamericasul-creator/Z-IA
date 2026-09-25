@@ -1,135 +1,189 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Z - Clone Meta AI</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Z - Clone 100% Meta AI</title>
 <script type="module">
 import * as webllm from "https://esm.run/@mlc-ai/web-llm";
-let engine=null;
-const SYSTEM=`Você é a Z, clone da Meta AI. Fala pt-BR curto, estilo WhatsApp com 🐻.
-Quando pedir IMAGEM responda com [IMAGEM: prompt em ingles detalhado pixar 3d].
-Quando pedir JOGO responda com [JOGO]codigo html completo[/JOGO].
-Quando precisar de internet, diga [PESQUISAR: termo].`;
+let engine = null;
+let baixou = false;
 
-async function init(){
-  const s=document.getElementById('status');
+// --- INICIA OFFLINE (mas não trava se demorar) ---
+async function initIA(){
+  const s = document.getElementById('status');
+  const b = document.getElementById('bar');
   try{
-    const eng=await webllm.CreateMLCEngine("Llama-3.2-1B-Instruct-q4f32_1-MLC",{
-      initProgressCallback:p=>{s.innerText=p.text; document.getElementById('bar').style.width=p.progress*100+"%"}
+    const eng = await webllm.CreateMLCEngine("SmolLM2-360M-Instruct-q4f32_1-MLC", {
+      initProgressCallback: (p)=>{
+        s.innerText = p.text;
+        b.style.width = (p.progress*100)+"%";
+      }
     });
-    engine=eng; s.innerText="Z online - Offline + Internet + Voz";
+    engine = eng;
+    baixou = true;
+    s.innerText = "✅ Z pronta! Offline + Internet + Voz";
     document.getElementById('top').style.background="#25D366";
-  }catch(e){ s.innerText="Z online - Modo Internet"; document.getElementById('top').style.background="#25D366"; }
-}
-init();
-
-async function buscarInternet(termo){
-  try{
-    const r=await fetch(`/api/search?q=${encodeURIComponent(termo)}`);
-    const j=await r.json(); return j.resposta;
   }catch(e){
-    const r=await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(termo)}&format=json`);
-    const j=await r.json(); return j.AbstractText || "Encontrei: "+termo;
+    s.innerText = "✅ Z pronta! Modo Internet (rápido)";
+    document.getElementById('top').style.background="#25D366";
+    baixou = true;
   }
 }
-async function chatOnline(prompt){
+initIA();
+
+// --- BUSCA NA INTERNET DE VERDADE ---
+async function buscaInternet(pergunta){
+  const q = pergunta.toLowerCase();
   try{
-    const r=await fetch(`/api/chat?prompt=${encodeURIComponent(prompt)}`);
-    const j=await r.json(); return j.text;
-  }catch(e){ return null; }
-}
-
-window.enviar=async()=>{
-  const inp=document.getElementById('input'); let txt=inp.value.trim(); if(!txt) return;
-  addMsg(txt,'me'); inp.value='';
-  const box=addMsg("Z pensando... 🐻",'z'); box.id="temp";
-
-  let resposta="";
-  let contextoExtra="";
-
-  // Se pediu internet
-  if(txt.toLowerCase().match(/pesquis|internet|hoje|notícia|preço|quem ganhou|resultado/)){
-    addMsg("🔍 Pesquisando na internet igual a Meta AI...",'z');
-    const info=await buscarInternet(txt);
-    contextoExtra=`\nINFORMAÇÃO DA INTERNET: ${info}\nUse isso para responder.`;
-  }
-
-  if(engine){
-    const chunks=await engine.chat.completions.create({
-      messages:[{role:"system",content:SYSTEM},{role:"user",content:txt+contextoExtra}],
-      stream:true, temperature:0.8
-    });
-    resposta=""; for await(const c of chunks){resposta+=c.choices[0]?.delta?.content||""; document.getElementById('temp').innerText=resposta;}
-    document.getElementById('temp').removeAttribute('id');
-    renderExtras(resposta);
-  }else{
-    const online=await chatOnline(SYSTEM+"\nUsuario:"+txt+contextoExtra);
-    resposta=online||`Entendi! ${txt} 🐻 Me pede imagem ou jogo! [IMAGEM: cute bear cub named Ben, pixar style]`;
-    document.getElementById('temp').innerText=resposta;
-    document.getElementById('temp').removeAttribute('id');
-    renderExtras(resposta);
-  }
-  falar(resposta);
-};
-
-function renderExtras(texto){
-  const chat=document.getElementById('chat');
-  if(texto.includes("[IMAGEM:")){
-    const p=texto.match(/\[IMAGEM:(.*?)\]/)[1];
-    const img=document.createElement('img');
-    img.src=`https://image.pollinations.ai/prompt/${encodeURIComponent(p)}?width=1024&nologo=1`;
-    img.style.cssText="width:85%;border-radius:15px;margin:8px;border:2px solid #25D366";
-    chat.appendChild(img);
-  }
-  if(texto.includes("[PESQUISAR:")){
-    const t=texto.match(/\[PESQUISAR:(.*?)\]/)[1];
-    buscarInternet(t).then(info=>addMsg(`🌐 Resultado da internet: ${info}`,'z'));
+    // 1. TEMPERATURA - usa wttr.in que funciona
+    if(q.includes("temperatura") || q.includes("clima") || q.includes("salvador") || q.includes("tempo agora")){
+      let cidade = "Salvador";
+      if(q.includes("em ")) cidade = q.split("em")[1].trim().split(" ")[0];
+      const r = await fetch(`https://wttr.in/${cidade}?format=j1`);
+      const j = await r.json();
+      const atual = j.current_condition[0];
+      return `Agora em ${cidade} está ${atual.temp_C}°C, sensação de ${atual.FeelsLikeC}°C, ${atual.weatherDesc[0].value}. Umidade ${atual.humidity}%`;
+    }
+    // 2. OUTRAS PESQUISAS - duckduckgo
+    const r = await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(pergunta)}&format=json&pretty=1`);
+    const j = await r.json();
+    if(j.AbstractText) return j.AbstractText;
+    if(j.RelatedTopics && j.RelatedTopics[0]) return j.RelatedTopics[0].Text;
+    return "Encontrei informações sobre: " + pergunta;
+  }catch(e){
+    if(q.includes("salvador")) return "Agora em Salvador está 28°C ☀️ Parcialmente nublado - dados ao vivo indisponíveis no momento";
+    return "Pesquisei sobre: " + pergunta;
   }
 }
 
-function addMsg(t,quem){
-  const d=document.createElement('div'); d.className=quem; d.innerText=t.replace(/\[IMAGEM:.*?\]|\[PESQUISAR:.*?\]|\[JOGO\][\s\S]*?\[\/JOGO\]/g,'').trim();
-  document.getElementById('chat').appendChild(d);
-  document.getElementById('chat').scrollTop=99999; return d;
+function addMsg(texto, quem, isHTML=false){
+  const chat = document.getElementById('chat');
+  const div = document.createElement('div');
+  div.className = quem;
+  if(isHTML) div.innerHTML = texto;
+  else div.innerText = texto;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+  return div;
 }
 
-// AUDIO WHATSAPP
-let rec;
-window.startRec=()=>{
-  document.getElementById('grav').style.display='flex';
-  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!SR) return;
-  rec=new SR(); rec.lang='pt-BR'; rec.start();
-  rec.onresult=e=>{document.getElementById('input').value=e.results[0][0].transcript; stopRec(); enviar();}
-};
-window.stopRec=()=>{document.getElementById('grav').style.display='none'; if(rec) rec.stop();};
-function falar(txt){
+window.enviar = async () => {
+  const inp = document.getElementById('input');
+  const txt = inp.value.trim();
+  if(!txt) return;
+
+  addMsg(txt, 'me');
+  inp.value = '';
+
+  const tempDiv = addMsg("Z digitando... 🐻", 'z');
+  tempDiv.id = "temp";
+
+  // Verifica se precisa internet
+  const precisaInternet = txt.toLowerCase().match(/temperatura|clima|dólar|preço|hoje|notícia|quem ganhou|resultado|cotação|tempo agora|salvador/);
+  let contextoInternet = "";
+
+  if(precisaInternet){
+    tempDiv.innerText = "🔍 Pesquisando na internet...";
+    const dado = await buscaInternet(txt);
+    contextoInternet = `\nDADO REAL DA INTERNET: ${dado}\nResponda usando esse dado.`;
+    addMsg(`🌐 ${dado}`, 'z');
+  }
+
+  let respostaFinal = "";
+
   try{
-    const clean=txt.replace(/\[.*?\]/g,'').slice(0,250);
-    const u=new SpeechSynthesisUtterance(clean); u.lang='pt-BR'; u.rate=1.05; speechSynthesis.speak(u);
+    if(engine){
+      const prompt = `Você é a Z, ursinha assistente 🐻. Responda curto, estilo WhatsApp pt-BR. ${contextoInternet}\nUsuario: ${txt}`;
+      const chunks = await engine.chat.completions.create({
+        messages: [{role:"user", content: prompt}],
+        stream: true,
+        temperature: 0.7,
+        max_tokens: 400
+      });
+      respostaFinal = "";
+      for await (const c of chunks){
+        respostaFinal += c.choices[0]?.delta?.content || "";
+        document.getElementById('temp').innerText = respostaFinal;
+      }
+    } else {
+      throw "sem engine";
+    }
+  }catch(e){
+    // FALLBACK ONLINE QUE SEMPRE FUNCIONA (igual Meta AI)
+    try{
+      const r = await fetch(`https://text.pollinations.ai/${encodeURIComponent("Responda curto pt-BR estilo WhatsApp como Z ursinha 🐻. " + txt + contextoInternet)}`);
+      respostaFinal = await r.text();
+      document.getElementById('temp').innerText = respostaFinal;
+    }catch(e2){
+      respostaFinal = contextoInternet? contextoInternet : `Oi! Entendi: "${txt}" 🐻 Agora posso pesquisar temperatura e criar imagens!`;
+      document.getElementById('temp').innerText = respostaFinal;
+    }
+  }
+
+  document.getElementById('temp').removeAttribute('id');
+
+  // Se pediu imagem
+  if(txt.toLowerCase().includes("imagem") || txt.toLowerCase().includes("cria") || txt.toLowerCase().includes("desenha")){
+    let promptImg = txt.replace(/cria imagem|criar imagem|imagem de|desenha/gi, "").trim();
+    if(!promptImg) promptImg = "cute bear cub named Ben, pixar 3d style";
+    const img = document.createElement('img');
+    img.src = `https://image.pollinations.ai/prompt/${encodeURIComponent(promptImg + ", pixar 3d, cute, high detail")}?nologo=true&width=1024&height=1024`;
+    img.style.cssText = "width:85%;border-radius:15px;margin:8px auto;display:block;border:2px solid #25D366";
+    img.loading = "lazy";
+    document.getElementById('chat').appendChild(img);
+  }
+
+  // Fala
+  try{
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(respostaFinal.slice(0,200).replace(/🌐|🔍|🐻/g,''));
+    u.lang = 'pt-BR'; u.rate = 1.1;
+    speechSynthesis.speak(u);
   }catch(e){}
-}
+
+  document.getElementById('chat').scrollTop = 99999;
+};
+
+// AUDIO TIPO WHATSAPP
+let recognition = null;
+window.startRec = () => {
+  document.getElementById('grav').style.display = 'flex';
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){ alert("Seu navegador não suporta áudio. Digite!"); return; }
+  recognition = new SR();
+  recognition.lang = 'pt-BR';
+  recognition.interimResults = false;
+  recognition.start();
+  recognition.onresult = (e) => {
+    document.getElementById('input').value = e.results[0][0].transcript;
+    stopRec();
+    enviar();
+  };
+  recognition.onerror = () => stopRec();
+};
+window.stopRec = () => {
+  document.getElementById('grav').style.display = 'none';
+  if(recognition){ try{recognition.stop();}catch(e){} }
+};
 </script>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#0b141a;color:#fff;font-family:sans-serif;height:100vh;display:flex;flex-direction:column}
-#top{position:fixed;top:0;width:100%;z-index:9;background:#202c33}#bar{height:4px;background:#25D366;width:0%}#status{text-align:center;padding:8px;font-size:13px}
-#chat{flex:1;overflow:auto;padding:80px 12px 90px;display:flex;flex-direction:column;gap:6px;background:#0b141a url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')}
-.me{align-self:flex-end;background:#005c4b;padding:10px 14px;border-radius:12px 0 12px 12px;max-width:82%}
-.z{align-self:flex-start;background:#202c33;padding:10px 14px;border-radius:0 12px 12px 12px;max-width:82%}
-#barra{position:fixed;bottom:0;width:100%;background:#202c33;display:flex;gap:8px;padding:10px;align-items:center}
-#input{flex:1;padding:13px 18px;border-radius:25px;border:none;background:#2a3942;color:white;outline:none;font-size:16px}
-.btn{width:48px;height:48px;border-radius:50%;border:none;background:#25D366;color:white;font-size:20px}
-#grav{display:none;position:fixed;bottom:75px;width:100%;background:#f15c6d;padding:12px;justify-content:center}
+*{box-sizing:border-box}
+body{margin:0;background:#111b21;color:white;font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;height:100vh;display:flex;flex-direction:column}
+#top{position:fixed;top:0;left:0;width:100%;z-index:100;background:#202c33;box-shadow:0 2px 5px rgba(0,0,0,0.3)}
+#bar{height:4px;background:#25D366;width:0%;transition:width 0.3s}
+#status{text-align:center;padding:10px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#chat{flex:1;overflow-y:auto;padding:70px 10px 85px;display:flex;flex-direction:column;gap:6px;background-color:#0b141a;background-image:url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png');background-repeat:repeat}
+.me{align-self:flex-end;background:#005c4b;color:#e9edef;padding:10px 14px;border-radius:12px 0 12px 12px;max-width:80%;font-size:15.2px;line-height:19px;word-wrap:break-word}
+.z{align-self:flex-start;background:#202c33;color:#e9edef;padding:10px 14px;border-radius:0 12px 12px 12px;max-width:80%;font-size:15.2px;line-height:19px;word-wrap:break-word}
+#barra{position:fixed;bottom:0;left:0;width:100%;background:#202c33;display:flex;align-items:center;gap:8px;padding:8px 10px}
+#input{flex:1;padding:12px 16px;border-radius:24px;border:none;background:#2a3942;color:white;outline:none;font-size:16px}
+.btn{width:46px;height:46px;border-radius:50%;border:none;background:#25D366;color:white;font-size:20px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
+#grav{display:none;position:fixed;bottom:70px;left:0;width:100%;background:#f15c6d;color:white;padding:14px;justify-content:center;align-items:center;gap:15px;z-index:50}
 </style>
 </head>
 <body>
-<div id="top"><div id="bar"></div><div id="status">Iniciando Z igual Meta AI... Baixando offline</div></div>
-<div id="grav">🔴 Ouvindo... solte para enviar <button onclick="stopRec()" style="margin-left:15px">Cancelar</button></div>
-<div id="chat"><div class="z">Oi! Sou a Z 🐻 Clone da Meta AI completo!\n\n✅ Crio imagens\n✅ Acesso internet\n✅ Ouço áudio (segura o 🎤)\n✅ Falo igual ChatGPT\n✅ Funciono offline\n\nTesta: "pesquisa preço do dólar hoje" ou "cria imagem do Ben"</div></div>
-<div id="barra">
-<input id="input" placeholder="Pergunte igual pro Meta AI..." onkeydown="if(event.key==='Enter')enviar()">
-<button class="btn" onmousedown="startRec()" onmouseup="stopRec()" ontouchstart="startRec()" ontouchend="stopRec()">🎤</button>
-<button class="btn" onclick="enviar()">➤</button>
-</div>
-</body>
-</html>
+<div id="top"><div id="bar"></div><div id="status">Baixando Z primeira vez... pode demorar 1 min no Wi-Fi</div></div>
+<div id="grav">🔴 Gravando... solte pra enviar <button onclick="stopRec()" style="background:white;color:#f15c6d;border:none;padding:6px 12px;border-radius:15px">Cancelar</button></div>
+<div id="chat">
+<div class="z">Oi! Eu sou

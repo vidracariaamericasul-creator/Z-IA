@@ -2,27 +2,60 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Z - Final Sem Erro</title>
+<title>Z - Pesquisa Geral</title>
 <script>
-async function buscaReal(pergunta){
-  const q = pergunta.toLowerCase();
-  try{
-    if(q.includes("dolar") || q.includes("dólar") || q.includes("usd")){
-      const r = await fetch("https://economia.awesomeapi.com.br/last/USD-BRL");
-      const j = await r.json();
-      const v = j.USDBRL;
-      return `💵 Dólar hoje: R$ ${parseFloat(v.bid).toFixed(2)} (compra) / R$ ${parseFloat(v.ask).toFixed(2)} (venda) - Variação ${v.pctChange}% - Atualizado ${v.create_date}`;
-    }
-    if(q.includes("temperatura") || q.includes("clima") || q.includes("salvador")){
-      let cidade = "Salvador";
-      if(q.includes(" em ")) cidade = q.split(" em ")[1].split(/[?,.]/)[0].trim();
-      const r = await fetch(`https://wttr.in/${cidade}?format=j1`);
+async function pesquisarTudo(pergunta){
+  const q = pergunta.toLowerCase().trim();
+
+  // 1. TEMPERATURA QUALQUER CIDADE DO MUNDO
+  if(q.includes("temperatura") || q.includes("clima") || q.includes("tempo agora")){
+    try{
+      let cidade = "Vitoria da Conquista";
+      // pega o que vier depois do "em"
+      let match = pergunta.match(/em\s+([^?.,]+)/i);
+      if(match) cidade = match[1].replace(/agora/gi,"").trim();
+      // wttr aceita Boston, Tokyo, tudo
+      const r = await fetch(`https://wttr.in/${encodeURIComponent(cidade)}?format=j1`);
       const j = await r.json();
       const a = j.current_condition[0];
       return `🌡️ Agora em ${cidade}: ${a.temp_C}°C (sensação ${a.FeelsLikeC}°C), ${a.weatherDesc[0].value}, umidade ${a.humidity}%, vento ${a.windspeedKmph}km/h`;
+    }catch(e){ return `Não achei clima de ${pergunta}, tenta "temperatura em Boston"`; }
+  }
+
+  // 2. DÓLAR
+  if(q.includes("dolar") || q.includes("dólar")){
+    try{
+      const r = await fetch("https://economia.awesomeapi.com.br/last/USD-BRL");
+      const j = await r.json();
+      return `💵 Dólar hoje: R$ ${parseFloat(j.USDBRL.bid).toFixed(2)} - variação ${j.USDBRL.pctChange}%`;
+    }catch(e){}
+  }
+
+  // 3. PESQUISA GERAL - WIKIPEDIA + DUCKDUCKGO (QUALQUER COISA)
+  try{
+    // tenta wikipedia pt
+    let termo = pergunta.replace(/o que é|quem é|quem foi|me explica|pesquisa/gi,"").trim();
+    let r = await fetch(`https://pt.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(termo)}`);
+    if(r.ok){
+      let j = await r.json();
+      if(j.extract) return `📚 ${j.title}: ${j.extract}`;
     }
-  }catch(e){ console.log(e); }
-  return null;
+    // tenta wikipedia en
+    r = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(termo)}`);
+    if(r.ok){
+      let j = await r.json();
+      if(j.extract) return `📚 ${j.title}: ${j.extract}`;
+    }
+    // tenta duckduckgo
+    r = await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(pergunta)}&format=json&pretty=1`);
+    let j = await r.json();
+    if(j.AbstractText) return `🌐 ${j.AbstractText}`;
+    if(j.RelatedTopics && j.RelatedTopics[0] && j.RelatedTopics[0].Text) return `🌐 ${j.RelatedTopics[0].Text}`;
+
+    return `Pesquisei sobre "${termo}" mas não achei resumo rápido. Tenta perguntar de outro jeito, tipo "quem foi Einstein"`;
+  }catch(e){
+    return `Pesquisei "${pergunta}" - deu erro de conexão, tenta de novo!`;
+  }
 }
 
 function addMsg(t,quem){
@@ -34,38 +67,20 @@ function addMsg(t,quem){
 window.enviar=async()=>{
   const inp=document.getElementById('input'); let txt=inp.value.trim(); if(!txt) return;
   addMsg(txt,'me'); inp.value='';
-  const load=addMsg("Z buscando... 🐻",'z');
+  const load=addMsg("🔍 Pesquisando na internet igual Meta AI...",'z');
 
-  // 1. Tenta buscar dado real primeiro (não precisa de IA)
-  let dado = await buscaReal(txt);
-  if(dado){
-    load.innerText = dado;
-    try{ speechSynthesis.speak(new SpeechSynthesisUtterance(dado.slice(0,150))); }catch(e){}
-    // imagem extra se pediu
-    if(txt.toLowerCase().match(/imagem|cria|desenha/)){
-      const img=document.createElement('img');
-      img.src=`https://image.pollinations.ai/prompt/${encodeURIComponent(txt)}?nologo=true&width=1024&height=1024&seed=${Date.now()}`;
-      img.style="width:85%;border-radius:15px;margin:8px;border:2px solid #25D366;display:block";
-      document.getElementById('chat').appendChild(img);
-    }
-    return;
-  }
+  let resposta = await pesquisarTudo(txt);
+  load.innerText = resposta;
 
-  // 2. Se não for dólar/tempo, tenta chat online com API nova
-  let prompt = `Responda curto pt-BR WhatsApp como Z ursinha 🐻: ${txt}`;
-  try{
-    // API nova que não dá ENOSPC
-    const r = await fetch("https://api.duckduckgo.com/?q="+encodeURIComponent(txt)+"&format=json");
-    const j = await r.json();
-    if(j.AbstractText){
-      load.innerText = j.AbstractText;
-    } else {
-      // fallback final
-      load.innerText = `Oi! Sobre "${txt}" 🐻\n\nPosso te ajudar com:\n- Dólar: "quanto está o dólar hoje"\n- Tempo: "temperatura em Salvador"\n- Imagem: "cria imagem do Ben astronauta"`;
-    }
-  }catch(e){
-    load.innerText = `Recebi: "${txt}" 🐻 Tô online! Pergunta dólar ou temperatura que te respondo na hora.`;
+  // imagem se pedir
+  if(txt.toLowerCase().match(/imagem|cria|desenha|foto/)){
+    let p = txt.replace(/cria|imagem|desenha/gi,"").trim() || "cute";
+    const img=document.createElement('img');
+    img.src=`https://image.pollinations.ai/prompt/${encodeURIComponent(p+", pixar 3d")}?width=1024&height=1024&seed=${Date.now()}&nologo=true`;
+    img.style="width:85%;border-radius:15px;margin:8px;border:2px solid #25D366;display:block";
+    document.getElementById('chat').appendChild(img);
   }
+  try{ speechSynthesis.speak(new SpeechSynthesisUtterance(resposta.slice(0,180))); }catch(e){}
 };
 
 let rec;
@@ -83,7 +98,7 @@ window.stopRec=()=>{document.getElementById('grav').style.display='none'; if(rec
 #top{background:#25D366;text-align:center;padding:10px;font-weight:bold}
 #chat{flex:1;overflow:auto;padding:15px 10px 85px;display:flex;flex-direction:column;gap:8px;background:#0b141a url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')}
 .me{align-self:flex-end;background:#005c4b;padding:10px 14px;border-radius:12px 0 12px 12px;max-width:82%}
-.z{align-self:flex-start;background:#202c33;padding:10px 14px;border-radius:0 12px 12px 12px;max-width:82%;white-space:pre-wrap}
+.z{align-self:flex-start;background:#202c33;padding:10px 14px;border-radius:0 12px 12px 12px;max-width:82%;white-space:pre-wrap;line-height:1.4}
 #barra{position:fixed;bottom:0;width:100%;background:#202c33;display:flex;gap:8px;padding:10px}
 #input{flex:1;padding:13px 18px;border-radius:25px;border:none;background:#2a3942;color:white;outline:none;font-size:16px}
 .btn{width:48px;height:48px;border-radius:50%;border:none;background:#25D366;color:white;font-size:20px}
@@ -91,17 +106,20 @@ window.stopRec=()=>{document.getElementById('grav').style.display='none'; if(rec
 </style>
 </head>
 <body>
-<div id="top">✅ Z Online - Dólar e Tempo Real</div>
-<div id="grav">🔴 Ouvindo... solte <button onclick="stopRec()">X</button></div>
-<div id="chat"><div class="z">Agora 100% sem erro! 🐻
+<div id="top">✅ Z Online - Pesquisa Geral Igual Meta AI</div>
+<div id="grav">🔴 Ouvindo... <button onclick="stopRec()">X</button></div>
+<div id="chat"><div class="z">Pronta! Agora geral! 🐻
 
-Testa de novo:
-"Quanto está o dólar hoje"
-"Qual temperatura em Salvador"
+Testa qualquer coisa:
+- Qual temperatura em Boston agora
+- Quem foi Albert Einstein
+- O que é buraco negro
+- Quanto está o dólar hoje
+- Cria imagem do Ben
 
-Vai responder na hora com dado real da internet!</div></div>
+Não tô mais limitada!</div></div>
 <div id="barra">
-<input id="input" placeholder="Pergunte..." onkeydown="if(event.key==='Enter')enviar()">
+<input id="input" placeholder="Pesquise qualquer coisa..." onkeydown="if(event.key==='Enter')enviar()">
 <button class="btn" onmousedown="startRec()" onmouseup="stopRec()" ontouchstart="startRec()" ontouchend="stopRec()">🎤</button>
 <button class="btn" onclick="enviar()">➤</button>
 </div>

@@ -7,7 +7,17 @@ from openai import OpenAI
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# Pega a chave que existir: GROQ ou OPENAI
+groq_key = os.getenv("GROQ_API_KEY")
+openai_key = os.getenv("OPENAI_API_KEY")
+
+if groq_key:
+    client = OpenAI(api_key=groq_key, base_url="https://api.groq.com/openai/v1")
+    MODEL = "openai/gpt-oss-20b" # modelo novo que substitui o llama-3.1
+else:
+    client = OpenAI(api_key=openai_key)
+    MODEL = "gpt-4o-mini"
 
 class Msg(BaseModel):
     message: str
@@ -17,8 +27,7 @@ SYSTEM_PROMPT = "Você é a Z-IA 2.1, criada pelo Zito. Divertida, brasileira, f
 
 @app.get("/", response_class=HTMLResponse)
 def home():
-    return """
-<!DOCTYPE html>
+    return """<!DOCTYPE html>
 <html><head><meta charset='utf-8'><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Z-IA 2.1 com Áudio</title>
 <style>
@@ -85,5 +94,5 @@ document.getElementById('inp').addEventListener('keypress',e=>{if(e.key==='Enter
 @app.post("/chat")
 def chat(m: Msg):
     msgs=[{"role":"system","content":SYSTEM_PROMPT}]+m.history[-8:]+[{"role":"user","content":m.message}]
-    comp=client.chat.completions.create(model="gpt-4o-mini",messages=msgs,temperature=0.8)
+    comp=client.chat.completions.create(model=MODEL,messages=msgs,temperature=0.8)
     return {"reply": comp.choices[0].message.content}
